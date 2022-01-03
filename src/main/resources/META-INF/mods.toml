@@ -1,0 +1,26 @@
+# Make sure this is set to "kotlinforforge"
+modLoader="kotlinforforge"
+# Make sure this is set to the appropriate version range
+loaderVersion="[3,)" # Require at least 3.x
+# License is REQUIRED after 1.16
+license='LGPL'
+
+[[mods]]
+modId="vanillin"
+version="${file.jarVersion}"
+displayName="Vanillin"
+credits="paavohtl"
+authors="paavohtl"
+description="Example mod that uses Kotlin for Forge."
+[[dependencies.vanillin]]
+    modId="forge"
+    mandatory=true
+    versionRange="[39,)"
+    ordering="NONE"
+    side="BOTH"
+[[dependencies.vanillin]]
+    modId="minecraft"
+    mandatory=true
+    versionRange="[1.18.1]"
+    ordering="NONE"
+    side="BOTH"
