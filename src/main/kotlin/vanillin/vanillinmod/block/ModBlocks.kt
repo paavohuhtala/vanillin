@@ -41,4 +41,16 @@ object ModBlocks {
     val KILN_BLOCk_ENTITY: BlockEntityType<KilnBlockEntity> by BLOCK_ENTITIES.registerObject("kiln_block_entity") {
         BlockEntityType.Builder.of({ pos, state -> KilnBlockEntity(pos, state) }, KILN).build(null)
     }
+
+    val CONDUCTOR by BLOCKS.registerObject("conductor") {
+        Conductor(
+            BlockBehaviour.Properties.of(Material.METAL).lightLevel { state ->
+                state.getValue(BlockStateProperties.POWER)
+            }
+        )
+    }
+
+    val CONDUCTOR_ITEM by ITEMS.registerObject("conductor_item") {
+        BlockItem(CONDUCTOR, Item.Properties().tab(CreativeModeTab.TAB_MISC))
+    }
 }

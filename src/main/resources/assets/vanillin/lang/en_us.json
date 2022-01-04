@@ -1,6 +1,8 @@
 {
   "item.vanillin.kiln": "Kiln",
   "block.vanillin.kiln": "Kiln",
+  "item.vanillin.conductor": "Conductor",
+  "block.vanillin.conductor": "Conductor",
   "gui.vanillin.recipebook.toggleRecipes.firable": "Showing Kiln Firable",
   "container.vanillin.kiln": "Kiln"
 }
