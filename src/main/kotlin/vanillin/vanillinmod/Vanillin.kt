@@ -2,27 +2,20 @@
 
 package vanillin.vanillinmod
 
-import vanillin.vanillinmod.block.ModBlocks
 import net.minecraft.client.Minecraft
-import net.minecraft.core.Registry
-import net.minecraft.resources.ResourceLocation
-import net.minecraft.world.item.Item
-import net.minecraft.world.item.crafting.RecipeSerializer
-import net.minecraft.world.item.crafting.RecipeType
 import net.minecraftforge.common.MinecraftForge
 import net.minecraftforge.event.entity.player.PlayerEvent
-import net.minecraftforge.fml.ModLoadingContext
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent
 import net.minecraftforge.fml.event.lifecycle.FMLDedicatedServerSetupEvent
-import net.minecraftforge.registries.ForgeRegistries
-import net.minecraftforge.registries.RegistryObject
 import org.apache.logging.log4j.Level
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
 import thedarkcolour.kotlinforforge.forge.MOD_BUS
 import thedarkcolour.kotlinforforge.forge.runForDist
+import vanillin.vanillinmod.block.KilnUi
+import vanillin.vanillinmod.block.ModBlocks
 import vanillin.vanillinmod.block.ModBlocks.KILN_ITEM
 
 /**
@@ -48,6 +41,8 @@ object Vanillin {
         ModBlocks.BLOCK_ENTITIES.register(MOD_BUS)
 
         ModRecipes.RECIPE_SERIALIZERS.register(MOD_BUS)
+
+        KilnUi.MENU_TYPES.register(MOD_BUS)
 
         MOD_BUS.addListener(::onCommonSetup)
 
@@ -92,13 +87,9 @@ object Vanillin {
     }
 
     private fun onCommonSetup(event: FMLCommonSetupEvent) {
-        LOGGER.log(Level.INFO, "common setup :D")
         event.enqueueWork {
-            LOGGER.log(Level.INFO, "what the heck :D")
-            LOGGER.log(Level.INFO, ModRecipes.FIRING_RECIPE_SERIALIZER)
-            LOGGER.log(Level.INFO, Registry.RECIPE_TYPE.keySet().toString())
-            // ModRecipes.FIRING_RECIPE = RecipeType.register("kiln_firing")
-            /*LOGGER.log(Level.INFO, ModRecipes.FIRING_RECIPE.toString())*/
+            LOGGER.log(Level.INFO, "Registering Kiln UI...")
+            KilnUi.registerMenus()
         }
     }
 }

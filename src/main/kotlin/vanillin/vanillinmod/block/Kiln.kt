@@ -1,11 +1,12 @@
 package vanillin.vanillinmod.block
 
+import com.mojang.blaze3d.systems.RenderSystem
+import com.mojang.blaze3d.vertex.PoseStack
 import net.minecraft.client.gui.screens.MenuScreens
-import net.minecraft.client.gui.screens.inventory.AbstractFurnaceScreen
-import net.minecraft.client.gui.screens.recipebook.SmeltingRecipeBookComponent
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
+import net.minecraft.client.renderer.GameRenderer
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
-import net.minecraft.core.Registry
 import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.network.chat.Component
 import net.minecraft.network.chat.TranslatableComponent
@@ -14,6 +15,7 @@ import net.minecraft.sounds.SoundEvents
 import net.minecraft.sounds.SoundSource
 import net.minecraft.util.Mth
 import net.minecraft.world.Container
+import net.minecraft.world.SimpleContainer
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.inventory.*
@@ -28,7 +30,12 @@ import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.api.distmarker.OnlyIn
+import net.minecraftforge.common.ForgeHooks
+import net.minecraftforge.registries.DeferredRegister
+import net.minecraftforge.registries.ForgeRegistries
+import thedarkcolour.kotlinforforge.forge.registerObject
 import vanillin.vanillinmod.ModRecipes
+import vanillin.vanillinmod.Vanillin
 import java.util.*
 
 
@@ -206,8 +213,7 @@ class KilnBlockEntity(pos: BlockPos, state: BlockState) : AbstractFurnaceBlockEn
                             kiln.recipeUsed = recipe
                         }
                     }
-                }
-                else {
+                } else {
                     kiln.cookingProgress = 0
                 }
             } else if (!kiln.isLit && kiln.cookingProgress > 0) {
@@ -215,7 +221,7 @@ class KilnBlockEntity(pos: BlockPos, state: BlockState) : AbstractFurnaceBlockEn
             }
 
             if (wasLit != kiln.isLit) {
-                var newState = blockState.setValue(AbstractFurnaceBlock.LIT, kiln.isLit)
+                val newState = blockState.setValue(AbstractFurnaceBlock.LIT, kiln.isLit)
                 level.setBlock(blockPos, newState, 3)
                 setChanged(level, blockPos, newState)
             }
@@ -224,63 +230,217 @@ class KilnBlockEntity(pos: BlockPos, state: BlockState) : AbstractFurnaceBlockEn
 }
 
 object KilnUi {
-    val KILN_MENU: MenuType<KilnMenu> by lazy {
-        @Suppress("DEPRECATION")
-        Registry.register(Registry.MENU, "kiln", MenuType(::KilnMenu))
+    val MENU_TYPES: DeferredRegister<MenuType<*>> = DeferredRegister.create(ForgeRegistries.CONTAINERS, Vanillin.ID)
+
+    val KILN_MENU: MenuType<KilnMenu> by MENU_TYPES.registerObject("kiln") {
+        MenuType(::KilnMenu)
     }
 
-    val KILN_MENU_SCREEN by lazy {
-        MenuScreens.register(KILN_MENU, ::KilMenuScreen)
+    fun registerMenus() {
+        MenuScreens.register(KILN_MENU, ::KilnMenuScreen)
     }
 }
 
-class KilnMenu : AbstractFurnaceMenu {
-    constructor(a: Int, inventory: Inventory) : super(
-        KilnUi.KILN_MENU,
-        ModRecipes.FIRING_RECIPE,
-        RecipeBookType.FURNACE,
-        a,
-        inventory
-    ) {
+fun isFuel(stack: ItemStack): Boolean {
+    return ForgeHooks.getBurnTime(stack, ModRecipes.FIRING_RECIPE) > 0
+}
 
+class KilnFuelSlot(pContainer: Container, pIndex: Int, pX: Int, pY: Int) : Slot(pContainer, pIndex, pX, pY) {
+    override fun mayPlace(pStack: ItemStack): Boolean {
+        // Do we really want to allow empty buckets?
+        return isFuel(pStack) || FurnaceFuelSlot.isBucket(pStack)
+    }
+}
+
+// Code mostly based on AbstractFurnaceMenu
+class KilnMenu : AbstractContainerMenu {
+    companion object {
+        const val INGREDIENT_SLOT = 0
+        const val FUEL_SLOT = 1
+        const val RESULT_SLOT = 2
+
+        private const val INV_SLOT_START = 3
+        private const val INV_SLOT_END = 30
+        private const val USE_ROW_SLOT_START = 30
+        private const val USE_ROW_SLOT_END = 39
     }
 
-    constructor(a: Int, inventory: Inventory, container: Container, containerData: ContainerData) : super(
-        MenuType.FURNACE,
-        ModRecipes.FIRING_RECIPE,
-        RecipeBookType.FURNACE,
-        a,
+    private val container: Container
+    private val containerData: ContainerData
+    private val level: Level
+
+    private val recipeType = ModRecipes.FIRING_RECIPE
+
+    constructor(containerId: Int, inventory: Inventory) : this(
+        containerId,
         inventory,
-        container,
-        containerData
+        SimpleContainer(3),
+        SimpleContainerData(4)
     ) {
 
     }
+
+    constructor(
+        containerId: Int,
+        playerInventory: Inventory,
+        container: Container,
+        containerData: ContainerData
+    ) : super(
+        KilnUi.KILN_MENU,
+        containerId,
+    ) {
+        checkContainerSize(container, 3)
+        checkContainerDataCount(containerData, 4)
+
+        this.container = container
+        this.containerData = containerData
+        this.level = playerInventory.player.level
+
+        addSlot(Slot(container, INGREDIENT_SLOT, 56, 17))
+        addSlot(KilnFuelSlot(container, FUEL_SLOT, 56, 53))
+        addSlot(FurnaceResultSlot(playerInventory.player, container, RESULT_SLOT, 116, 35))
+
+        for (y in 0..2) {
+            for (x in 0..8) {
+                addSlot(Slot(playerInventory, x + y * 9 + 9, 8 + x * 18, 84 + y * 18))
+            }
+        }
+
+        for (k in 0..8) {
+            addSlot(Slot(playerInventory, k, 8 + k * 18, 142))
+        }
+
+        addDataSlots(containerData)
+    }
+
+    override fun stillValid(pPlayer: Player) = container.stillValid(pPlayer)
+
+    private fun canSmelt(stack: ItemStack): Boolean {
+        return level.recipeManager.getRecipeFor(recipeType, SimpleContainer(stack), level).isPresent
+    }
+
+    override fun quickMoveStack(pPlayer: Player, pIndex: Int): ItemStack {
+        val slot = slots.getOrNull(pIndex)
+
+        if (slot == null || !slot.hasItem()) {
+            return ItemStack.EMPTY
+        }
+
+        val item = slot.item
+        val stack = item.copy()
+
+        when (pIndex) {
+            RESULT_SLOT -> {
+                if (!moveItemStackTo(item, INV_SLOT_START, USE_ROW_SLOT_END, true)) {
+                    return ItemStack.EMPTY
+                }
+
+                slot.onQuickCraft(item, stack)
+            }
+            INGREDIENT_SLOT, FUEL_SLOT -> {
+                if (!moveItemStackTo(item, INV_SLOT_START, USE_ROW_SLOT_END, false)) {
+                    return ItemStack.EMPTY
+                }
+            }
+            in INV_SLOT_START until USE_ROW_SLOT_END -> {
+                if (canSmelt(item)) {
+                    if (!moveItemStackTo(item, INGREDIENT_SLOT, INGREDIENT_SLOT + 1, false)) {
+                        return ItemStack.EMPTY
+                    }
+                } else if (isFuel(item)) {
+                    if (!moveItemStackTo(item, FUEL_SLOT, FUEL_SLOT + 1, false)) {
+                        return ItemStack.EMPTY
+                    }
+                }
+                // If the item is in the inventory, try moving it to the hotbar
+                else if (pIndex in INV_SLOT_START until USE_ROW_SLOT_START) {
+                    if (!moveItemStackTo(item, USE_ROW_SLOT_START, USE_ROW_SLOT_END, false)) {
+                        return ItemStack.EMPTY
+                    }
+                }
+                // The item must be in hotbar, try moving it to inventory
+                else {
+                    if (!moveItemStackTo(item, INV_SLOT_START, INV_SLOT_END, false)) {
+                        return ItemStack.EMPTY
+                    }
+                }
+            }
+        }
+
+        if (item.isEmpty) {
+            slot.set(ItemStack.EMPTY)
+        } else {
+            slot.setChanged()
+        }
+
+        if (item.count == stack.count) {
+            return ItemStack.EMPTY
+        }
+
+        slot.onTake(pPlayer, item)
+
+        return stack
+    }
+
+    private val litTime get(): Int = containerData.get(0)
+    private val litDuration get(): Int = containerData.get(1)
+    private val cookingProgress get(): Int = containerData.get(2)
+    private val cookingTotalTime get(): Int = containerData.get(3)
+
+    val isLit get() = litTime > 0
+    private val isCooking get() = cookingTotalTime != 0 && cookingProgress != 0
+
+    val burnProgress
+        get() = if (isCooking) {
+            (cookingProgress * 24) / cookingTotalTime
+        } else {
+            0
+        }
+
+    val litProgress
+        get(): Int {
+            val i = if (litDuration == 0) {
+                200
+            } else {
+                litDuration
+            }
+
+            return litTime * 13 / i
+        }
 }
-
-/*@OnlyIn(Dist.CLIENT)
-class FiringRecipeBookComponent : AbstractFurnaceRecipeBookComponent() {
-    override fun getFuelItems(): MutableSet<Item> {
-        @Suppress("DEPRECATION")
-        return AbstractFurnaceBlockEntity.getFuel().keys
-    }
-
-    override fun getRecipeFilterName(): Component? {
-        return TranslatableComponent("gui.vanillin.recipebook.toggleRecipes.firable")
-    }
-
-}*/
 
 @OnlyIn(Dist.CLIENT)
-class KilMenuScreen(
-    menu: KilnMenu, inventory: Inventory, component: Component,
-) : AbstractFurnaceScreen<KilnMenu>(
-    menu,
-    SmeltingRecipeBookComponent(),
-    // FiringRecipeBookComponent(),
-    inventory,
-    component,
-    ResourceLocation("textures/gui/container/furnace.png")
-) {
+class KilnMenuScreen : AbstractContainerScreen<KilnMenu> {
+    private val texture: ResourceLocation = ResourceLocation("textures/gui/container/furnace.png")
 
+    constructor(menu: KilnMenu, playerInventory: Inventory, title: Component) : super(menu, playerInventory, title)
+
+    override fun init() {
+        super.init()
+        titleLabelX = (imageWidth - font.width(title)) / 2
+    }
+
+    override fun renderBg(pPoseStack: PoseStack, pPartialTick: Float, pMouseX: Int, pMouseY: Int) {
+        RenderSystem.setShader { GameRenderer.getPositionTexShader() }
+        RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f)
+        RenderSystem.setShaderTexture(0, texture)
+
+        val left = leftPos
+        val top = topPos
+        this.blit(pPoseStack, left, top, 0, 0, imageWidth, imageHeight)
+
+        if (menu.isLit) {
+            val k = menu.litProgress
+            this.blit(pPoseStack, left + 56, top + 36 + 12 - k, 176, 12 - k, 14, k + 1)
+        }
+
+        val l = menu.burnProgress
+        this.blit(pPoseStack, left + 79, top + 34, 176, 14, l + 1, 16)
+    }
+
+    override fun render(pPoseStack: PoseStack, pMouseX: Int, pMouseY: Int, pPartialTick: Float) {
+        this.renderBackground(pPoseStack)
+        super.render(pPoseStack, pMouseX, pMouseY, pPartialTick)
+        this.renderTooltip(pPoseStack, pMouseX, pMouseY)
+    }
 }
